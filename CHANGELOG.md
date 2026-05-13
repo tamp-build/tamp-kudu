@@ -5,6 +5,39 @@ All notable changes to **Tamp.Kudu** are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-05-13
+
+### Fixed
+
+- **`ManagementClient.GetConfigReferencesAsync` was deserializing against the wrong response shape.**
+  The 0.2.1 URL fix unblocked the request but the model expected
+  `{ properties: { keyToReferenceStatuses: {...} } }` (a dict at the leaf) while ARM actually
+  returns `{ value: [{ id, name, location, properties: {...}, type }, ...] }` (a resource list).
+  The deserializer didn't fail; it just produced an empty dictionary — same silent-zero failure
+  family as the original URL bug. Caught by strata-scott against `strata-api-dev` immediately
+  after the 0.2.1 bump.
+
+  Fix: deserialize into a new public `ConfigReferencesRawResponse` then project into the existing
+  dict-shaped `ConfigReferencesResponse` keyed by `entry.Name`. Public API unchanged — adopter
+  code still uses `refs.Properties.KeyToReferenceStatuses[settingName]`. Adopters who want the
+  full resource metadata (id, location, type) can call `GetAsync<ConfigReferencesRawResponse>(...)`
+  directly via the protected base methods.
+
+### Added
+
+- **`ManagementClient.GetConfigReferenceAsync(settingName)`** — single-resource getter for the
+  per-setting endpoint `/config/configreferences/appsettings/{settingName}`. Returns the
+  `ConfigReferenceStatus` directly (null on 404). Useful when you have a specific setting in
+  hand and don't want to round-trip the whole list.
+
+- **`ConfigReferenceStatus.ActiveVersion`** — the currently-resolved version of the KV secret
+  (the GUID portion of the active reference URI). Surfaces from ARM but wasn't in the prior
+  model. Useful for rotation tracking when a setting points at a versionless KV reference.
+
+- **`ConfigReferencesRawResponse`** + **`ConfigReferenceResourceEntry`** — public raw-shape
+  types matching ARM's wire format. Exposed so adopters can bypass the dict projection when
+  they need the full resource metadata.
+
 ## [0.2.1] - 2026-05-13
 
 ### Fixed

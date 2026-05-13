@@ -85,8 +85,49 @@ public sealed class ManagementClient : TampApiClient
     /// Read the per-app-setting KV-reference resolution status. The most useful endpoint for
     /// diagnosing "KV-ref says resolved but the app is reading the literal placeholder" failures.
     /// </summary>
-    public Task<ConfigReferencesResponse> GetConfigReferencesAsync(CancellationToken ct = default)
-        => GetAsync<ConfigReferencesResponse>($"{BasePath}/config/configreferences/appsettings?api-version={ApiVersion}", ct);
+    /// <remarks>
+    /// The ARM endpoint returns a resource-list shape — <c>{ value: [{ id, name, properties: {...} }, ...] }</c>.
+    /// This method projects it into the dict-by-name shape exposed via <see cref="ConfigReferencesResponse"/>
+    /// for ergonomic adopter code (<c>refs.Properties.KeyToReferenceStatuses[settingName]</c>). When the
+    /// raw resource list shape is needed (debugging, side-by-side display), call
+    /// <see cref="GetConfigReferenceAsync"/> per setting or consume the raw model directly via
+    /// <c>GetAsync&lt;<see cref="ConfigReferencesRawResponse"/>&gt;(...)</c>.
+    /// </remarks>
+    public async Task<ConfigReferencesResponse> GetConfigReferencesAsync(CancellationToken ct = default)
+    {
+        var raw = await GetAsync<ConfigReferencesRawResponse>(
+            $"{BasePath}/config/configreferences/appsettings?api-version={ApiVersion}", ct).ConfigureAwait(false);
+        var dict = new Dictionary<string, ConfigReferenceStatus>(raw.Value.Count, StringComparer.Ordinal);
+        foreach (var entry in raw.Value)
+        {
+            if (string.IsNullOrEmpty(entry.Name)) continue;
+            dict[entry.Name] = entry.Properties;
+        }
+        return new ConfigReferencesResponse
+        {
+            Properties = new ConfigReferencesProperties { KeyToReferenceStatuses = dict }
+        };
+    }
+
+    /// <summary>
+    /// Read the KV-reference status for a single app setting via the per-resource endpoint
+    /// <c>/config/configreferences/appsettings/{settingName}</c>. Returns null on 404 (the setting
+    /// has no KV reference configured, or the setting doesn't exist).
+    /// </summary>
+    public async Task<ConfigReferenceStatus?> GetConfigReferenceAsync(string settingName, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(settingName)) throw new ArgumentException("settingName required.", nameof(settingName));
+        var url = $"{BasePath}/config/configreferences/appsettings/{Uri.EscapeDataString(settingName)}?api-version={ApiVersion}";
+        try
+        {
+            var entry = await GetAsync<ConfigReferenceResourceEntry>(url, ct).ConfigureAwait(false);
+            return entry.Properties;
+        }
+        catch (ApiClientException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Read all current app settings via the Management API (the route that resolves KV references).</summary>
     public Task<AppSettingsResponse> ListAppSettingsAsync(CancellationToken ct = default)
@@ -125,8 +166,13 @@ public sealed record PublishingCredentialsProperties
     [JsonPropertyName("scmUri")] public string ScmUri { get; init; } = "";
 }
 
-/// <summary>Response shape of <c>GET /sites/{}/config/configreferences/appsettings</c>. The single
-/// most useful endpoint for diagnosing KV-reference resolution failures.</summary>
+/// <summary>
+/// Adopter-facing, dict-shaped projection of the configreferences/appsettings endpoint.
+/// The wire shape is a resource list (see <see cref="ConfigReferencesRawResponse"/>);
+/// <see cref="ManagementClient.GetConfigReferencesAsync"/> projects it into this shape
+/// keyed by setting name for ergonomic <c>refs.Properties.KeyToReferenceStatuses[settingName]</c>
+/// lookups.
+/// </summary>
 public sealed record ConfigReferencesResponse
 {
     [JsonPropertyName("properties")] public ConfigReferencesProperties Properties { get; init; } = new();
@@ -137,6 +183,28 @@ public sealed record ConfigReferencesProperties
     [JsonPropertyName("keyToReferenceStatuses")] public Dictionary<string, ConfigReferenceStatus> KeyToReferenceStatuses { get; init; } = new();
 }
 
+/// <summary>
+/// Raw wire shape returned by <c>GET /config/configreferences/appsettings</c>:
+/// <c>{ value: [{ id, name, location, properties: {...}, type }, ...] }</c>. Exposed as
+/// public so adopters who want the full resource metadata (id, location, type) can call
+/// <see cref="ManagementClient.GetAsync{T}"/> directly with this type, bypassing the
+/// dict projection done by <see cref="ManagementClient.GetConfigReferencesAsync"/>.
+/// </summary>
+public sealed record ConfigReferencesRawResponse
+{
+    [JsonPropertyName("value")] public List<ConfigReferenceResourceEntry> Value { get; init; } = new();
+}
+
+/// <summary>One row of the <see cref="ConfigReferencesRawResponse"/> resource list.</summary>
+public sealed record ConfigReferenceResourceEntry
+{
+    [JsonPropertyName("id")] public string Id { get; init; } = "";
+    [JsonPropertyName("name")] public string Name { get; init; } = "";
+    [JsonPropertyName("location")] public string? Location { get; init; }
+    [JsonPropertyName("type")] public string? Type { get; init; }
+    [JsonPropertyName("properties")] public ConfigReferenceStatus Properties { get; init; } = new();
+}
+
 public sealed record ConfigReferenceStatus
 {
     [JsonPropertyName("reference")] public string Reference { get; init; } = "";
@@ -144,6 +212,10 @@ public sealed record ConfigReferenceStatus
     [JsonPropertyName("vaultName")] public string? VaultName { get; init; }
     [JsonPropertyName("secretName")] public string? SecretName { get; init; }
     [JsonPropertyName("secretVersion")] public string? SecretVersion { get; init; }
+    /// <summary>Currently-resolved version of the secret (the GUID portion of the active KV reference URI).
+    /// Useful when a setting points at a versionless KV reference and you want to know which version is in
+    /// flight right now (rotation-tracking).</summary>
+    [JsonPropertyName("activeVersion")] public string? ActiveVersion { get; init; }
     [JsonPropertyName("identityType")] public string? IdentityType { get; init; }
     [JsonPropertyName("details")] public string? Details { get; init; }
     /// <summary>True when the KV reference resolved to a real value; false otherwise (details explains why).</summary>

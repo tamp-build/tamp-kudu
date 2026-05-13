@@ -271,26 +271,112 @@ public sealed class ManagementClientTests
     }
 
     [Fact]
-    public async Task GetConfigReferences_Get_To_Configreferences_Appsettings()
+    public async Task GetConfigReferences_Projects_Resource_List_Into_Dict_By_Name()
     {
-        var spy = new SpyHandler
-        {
-            ResponseBody = "{\"properties\":{\"keyToReferenceStatuses\":{\"MY_SECRET\":{\"reference\":\"@KV\",\"status\":\"Resolved\",\"vaultName\":\"kv1\"}}}}"
-        };
+        // ARM's actual wire shape: a resource list, not a properties.keyToReferenceStatuses dict.
+        // Each entry has its own { id, name, location, type, properties: {...} }. The 0.2.2
+        // projection collapses that to a dict keyed by name for ergonomic adopter code.
+        // Regression fence for the 0.2.0/0.2.1 silent-empty-dict bug strata-scott caught.
+        var armResponse = """
+            {
+              "value": [
+                {
+                  "id": "/subscriptions/sub/.../sites/site/config/configreferences/appsettings/ConnectionStrings__TenantDb",
+                  "location": "East US 2",
+                  "name": "ConnectionStrings__TenantDb",
+                  "type": "Microsoft.Web/sites/config/configreferences",
+                  "properties": {
+                    "activeVersion": "e6de0d8a3ccb46c2806f7eb9443539e6",
+                    "details": "Reference has been successfully resolved.",
+                    "identityType": "SystemAssigned",
+                    "reference": "@Microsoft.KeyVault(SecretUri=https://kv.../secrets/x/abc)",
+                    "secretName": "tenantdb-conn-string",
+                    "secretVersion": "e6de0d8a3ccb46c2806f7eb9443539e6",
+                    "status": "Resolved",
+                    "vaultName": "kv-strata-dev"
+                  }
+                }
+              ]
+            }
+            """;
+        var spy = new SpyHandler { ResponseBody = armResponse };
         using var m = new ManagementClient("sub", "rg", "site",
             ApiCredential.Bearer(new Secret("t", "tok")),
             http: new HttpClient(spy));
+
         var refs = await m.GetConfigReferencesAsync();
-        var entry = refs.Properties.KeyToReferenceStatuses["MY_SECRET"];
+
+        // Dict-shaped projection: keyed by the entry's `name`, value is the entry's `properties`.
+        Assert.Single(refs.Properties.KeyToReferenceStatuses);
+        var entry = refs.Properties.KeyToReferenceStatuses["ConnectionStrings__TenantDb"];
         Assert.True(entry.IsResolved);
-        Assert.Equal("kv1", entry.VaultName);
+        Assert.Equal("kv-strata-dev", entry.VaultName);
+        Assert.Equal("tenantdb-conn-string", entry.SecretName);
+        Assert.Equal("e6de0d8a3ccb46c2806f7eb9443539e6", entry.ActiveVersion);
+        Assert.Equal("SystemAssigned", entry.IdentityType);
+
         var req = Assert.Single(spy.Requests);
         Assert.Equal(HttpMethod.Get, req.Method);
-        // ARM serves the resolution-status endpoint at /sites/{}/config/configreferences/appsettings.
-        // The full /config/ segment is part of the WebApps configuration family alongside
-        // /config/appsettings/list and /config/connectionstrings/list — regression fence for the
-        // 0.2.1 URL fix (the 0.1.0/0.2.0 implementations omitted /config/ and 404'd).
         Assert.Contains("/config/configreferences/appsettings", req.RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task GetConfigReferences_Empty_Value_Array_Returns_Empty_Dict()
+    {
+        var spy = new SpyHandler { ResponseBody = """{"value":[]}""" };
+        using var m = new ManagementClient("sub", "rg", "site",
+            ApiCredential.Bearer(new Secret("t", "tok")), http: new HttpClient(spy));
+        var refs = await m.GetConfigReferencesAsync();
+        Assert.Empty(refs.Properties.KeyToReferenceStatuses);
+    }
+
+    [Fact]
+    public async Task GetConfigReferenceAsync_Single_Resource_Endpoint()
+    {
+        var armResponse = """
+            {
+              "id": "/subscriptions/sub/.../sites/site/config/configreferences/appsettings/X",
+              "name": "X",
+              "properties": {
+                "status": "Resolved",
+                "reference": "@Microsoft.KeyVault(...)",
+                "vaultName": "kv1",
+                "secretName": "x",
+                "activeVersion": "v1"
+              }
+            }
+            """;
+        var spy = new SpyHandler { ResponseBody = armResponse };
+        using var m = new ManagementClient("sub", "rg", "site",
+            ApiCredential.Bearer(new Secret("t", "tok")), http: new HttpClient(spy));
+
+        var status = await m.GetConfigReferenceAsync("X");
+
+        Assert.NotNull(status);
+        Assert.True(status!.IsResolved);
+        Assert.Equal("kv1", status.VaultName);
+        Assert.Equal("v1", status.ActiveVersion);
+
+        var req = Assert.Single(spy.Requests);
+        Assert.Contains("/config/configreferences/appsettings/X", req.RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task GetConfigReferenceAsync_Returns_Null_On_404()
+    {
+        var spy = new SpyHandler { Status = HttpStatusCode.NotFound, ResponseBody = "" };
+        using var m = new ManagementClient("sub", "rg", "site",
+            ApiCredential.Bearer(new Secret("t", "tok")), http: new HttpClient(spy));
+        var status = await m.GetConfigReferenceAsync("missing-setting");
+        Assert.Null(status);
+    }
+
+    [Fact]
+    public async Task GetConfigReferenceAsync_Rejects_Empty_SettingName()
+    {
+        using var m = new ManagementClient("sub", "rg", "site",
+            ApiCredential.Bearer(new Secret("t", "tok")), http: new HttpClient(new SpyHandler()));
+        await Assert.ThrowsAsync<ArgumentException>(() => m.GetConfigReferenceAsync(""));
     }
 
     [Fact]
@@ -311,12 +397,13 @@ public sealed class ManagementClientTests
         public List<HttpRequestMessage> Requests { get; } = new();
         public List<string> RequestBodies { get; } = new();
         public string ResponseBody { get; set; } = "{}";
+        public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct);
             RequestBodies.Add(body);
             Requests.Add(request);
-            return new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(Status)
             {
                 Content = new StringContent(ResponseBody, Encoding.UTF8, "application/json")
             };
