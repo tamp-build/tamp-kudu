@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Tamp.Kudu</RootNamespace>
+    <AssemblyName>Tamp.Kudu</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackageId>Tamp.Kudu</PackageId>
+    <Description>Typed wrapper for Azure App Service Kudu REST API + Management API helpers. Surfaces: vfs (file upload / list / delete with the /home root convention), command (POST shell command, recommended via vfs-deployed bash files for non-trivial scripts), appsettings (Management API for KV-reference resolution), Management API lifecycle (stop / start / restart / listKeys / configreferences/appsettings diagnostic). Built for the Strata App Service + KV-ref + migration-runner deploy patterns. Companion to Tamp.AzureCli.V2 and Tamp.AzureAppService.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(TampCorePath)" Condition="'$(TampCoreMode)' == 'project'" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\..\tamp-http\src\Tamp.Http\Tamp.Http.csproj" Condition="'$(TampCoreMode)' == 'project'" />
+    <PackageReference Include="Tamp.Core" Condition="'$(TampCoreMode)' == 'package'" />
+    <PackageReference Include="Tamp.Http" Condition="'$(TampCoreMode)' == 'package'" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>
