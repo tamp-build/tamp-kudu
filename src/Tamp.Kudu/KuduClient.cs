@@ -39,13 +39,14 @@ public sealed class KuduClient : TampApiClient
     public string? SlotName { get; }
 
     public KuduClient(string siteName, ApiCredential credential, string? slot = null, bool disableConnectionVerification = false, HttpClient? http = null)
-        : base(BuildBaseUri(siteName, slot), credential, disableConnectionVerification, http, userAgent: "Tamp.Kudu/0.1.0")
+        : base(BuildBaseUri(siteName, slot), credential, disableConnectionVerification, http, userAgent: "Tamp.Kudu/0.2.0")
     {
         SiteName = siteName ?? throw new ArgumentNullException(nameof(siteName));
         SlotName = slot;
         Vfs = new VfsClient(this);
         Command = new CommandClient(this);
         Settings = new SettingsClient(this);
+        Deployment = new DeploymentClient(this);
     }
 
     /// <summary>vfs operations — upload / download / list / delete files under <c>/home</c>.</summary>
@@ -56,6 +57,9 @@ public sealed class KuduClient : TampApiClient
 
     /// <summary>Kudu-flavored app settings. For KV-reference resolution use the Management API instead.</summary>
     public SettingsClient Settings { get; }
+
+    /// <summary>Zip-deploy + deployment introspection (<c>/api/zipdeploy</c>, <c>/api/deployments</c>).</summary>
+    public DeploymentClient Deployment { get; }
 
     private static Uri BuildBaseUri(string siteName, string? slot)
     {

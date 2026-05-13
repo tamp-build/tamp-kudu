@@ -5,6 +5,50 @@ All notable changes to **Tamp.Kudu** are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-05-13
+
+### Added — DeploymentClient (TAM-184)
+
+- **`KuduClient.Deployment`** — new sub-client wrapping `/api/zipdeploy` plus the
+  `/api/deployments` introspection routes. The canonical Azure App Service deploy path.
+
+- **`DeploymentClient.ZipDeployAsync(zipPath, async?, pollInterval?, timeout?, ct?)`** —
+  zip-deploy from a file path. Streams as raw body to `/api/zipdeploy` with
+  `Content-Type: application/zip`.
+
+  - `async: false` (default) — Kudu holds the connection open until provisioning completes;
+    suitable for small zips and fast provisioning.
+  - `async: true` — wrapper posts with `?isAsync=true`, captures the deployment ID from the
+    `Location` header, polls `/api/deployments/{id}` until terminal state (status 0 = Success,
+    1 = Failed) or `timeout` (default 10 min) elapses.
+
+- **`DeploymentClient.ZipDeployAsync(Stream, ...)`** — same flow for in-memory zips.
+
+- **`DeploymentClient.GetStatusAsync(deploymentId)`** — typed `DeploymentEntry?` for a specific
+  deployment. Returns null on 404.
+
+- **`DeploymentClient.ListAsync()`** — recent deployments.
+
+- **`ZipDeployResult`** — `IsSuccess` / `DeploymentId` / `Status` / `StatusCode` / `LogText`.
+  Status values: `Success`, `Failed`, `TimedOut`.
+
+- **`DeploymentEntry`** — JSON-mapped record for the `/api/deployments` shape. Numeric
+  `Status` field documented inline (0 Success, 1 Failed, 2 Pending, 3 Building, 4 Deploying).
+
+### Notes
+
+- Driven by strata-scott's 2026-05-13 universal-friction report. Every Azure App Service deploy
+  step in any Tamp adopter's pipeline either zips + zip-deploys or shells out to
+  `az webapp deploy --type zip` (same endpoint underneath). Pre-0.2.0 Strata had to keep using
+  either the `AzureWebApp@1` ADO task or a manual `az` shell-out for DeployApi.
+
+- **Zip creation is project-side.** Adopters use `System.IO.Compression.ZipFile.CreateFromDirectory`
+  or any other zip producer — Tamp does not opine on the layout (per the universal-design rule).
+
+- 10 new unit tests; 33/33 green across net8/9/10. Test seam: `HttpMessageHandler` shims for
+  both `RecordingHandler` and `ScriptedHandler` exercise the POST → 202 → poll → terminal-state
+  cycle deterministically without real Kudu.
+
 ## [0.1.0] - 2026-05-13
 
 ### Added
