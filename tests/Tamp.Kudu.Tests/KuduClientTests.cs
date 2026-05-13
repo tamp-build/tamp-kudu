@@ -286,7 +286,11 @@ public sealed class ManagementClientTests
         Assert.Equal("kv1", entry.VaultName);
         var req = Assert.Single(spy.Requests);
         Assert.Equal(HttpMethod.Get, req.Method);
-        Assert.Contains("/configreferences/appsettings", req.RequestUri!.AbsolutePath);
+        // ARM serves the resolution-status endpoint at /sites/{}/config/configreferences/appsettings.
+        // The full /config/ segment is part of the WebApps configuration family alongside
+        // /config/appsettings/list and /config/connectionstrings/list — regression fence for the
+        // 0.2.1 URL fix (the 0.1.0/0.2.0 implementations omitted /config/ and 404'd).
+        Assert.Contains("/config/configreferences/appsettings", req.RequestUri!.AbsolutePath);
     }
 
     [Fact]

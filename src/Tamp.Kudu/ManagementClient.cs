@@ -13,7 +13,7 @@ namespace Tamp.Kudu;
 /// <summary>
 /// Azure Resource Manager (ARM) helpers for App Service operations that aren't on the
 /// Kudu surface: lifecycle (stop / start / restart), publishing-credential listing
-/// (<c>listKeys</c>), and the <c>configreferences/appsettings</c> diagnostic that
+/// (<c>listKeys</c>), and the <c>config/configreferences/appsettings</c> diagnostic that
 /// reports per-setting KV-reference resolution status.
 /// </summary>
 /// <remarks>
@@ -86,7 +86,7 @@ public sealed class ManagementClient : TampApiClient
     /// diagnosing "KV-ref says resolved but the app is reading the literal placeholder" failures.
     /// </summary>
     public Task<ConfigReferencesResponse> GetConfigReferencesAsync(CancellationToken ct = default)
-        => GetAsync<ConfigReferencesResponse>($"{BasePath}/configreferences/appsettings?api-version={ApiVersion}", ct);
+        => GetAsync<ConfigReferencesResponse>($"{BasePath}/config/configreferences/appsettings?api-version={ApiVersion}", ct);
 
     /// <summary>Read all current app settings via the Management API (the route that resolves KV references).</summary>
     public Task<AppSettingsResponse> ListAppSettingsAsync(CancellationToken ct = default)
@@ -125,8 +125,8 @@ public sealed record PublishingCredentialsProperties
     [JsonPropertyName("scmUri")] public string ScmUri { get; init; } = "";
 }
 
-/// <summary>Response shape of <c>GET /configreferences/appsettings</c>. The single most useful
-/// endpoint for diagnosing KV-reference resolution failures.</summary>
+/// <summary>Response shape of <c>GET /sites/{}/config/configreferences/appsettings</c>. The single
+/// most useful endpoint for diagnosing KV-reference resolution failures.</summary>
 public sealed record ConfigReferencesResponse
 {
     [JsonPropertyName("properties")] public ConfigReferencesProperties Properties { get; init; } = new();

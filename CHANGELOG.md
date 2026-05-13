@@ -5,6 +5,25 @@ All notable changes to **Tamp.Kudu** are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-05-13
+
+### Fixed
+
+- **`ManagementClient.GetConfigReferencesAsync` was emitting the wrong ARM URL** — bug present
+  in both 0.1.0 and 0.2.0. The endpoint lives at `/sites/{}/config/configreferences/appsettings`
+  (alongside the rest of the `WebApps_*-Configurations` family — `/config/appsettings/list`,
+  `/config/connectionstrings/list`); the implementation was missing the `/config/` segment and
+  hitting `/sites/{}/configreferences/appsettings`, which ARM 404s.
+
+  Symptom on adopters: `ApiClientException: GET ... -> 404 Not Found` from any
+  `CheckKvRefs`-style diagnostic target. Other ManagementClient endpoints (`/stop`, `/start`,
+  `/restart`, `/config/appsettings/list`, `/config/publishingcredentials/list`) were correct
+  — this was the lone misshapen URL.
+
+  Caught by strata-scott against `strata-api-dev` shortly after wiring `CheckKvRefs` into the
+  build script under Tamp.Core 1.5.0. Test now pins the correct path
+  (`/config/configreferences/appsettings`) as a regression fence.
+
 ## [0.2.0] - 2026-05-13
 
 ### Added — DeploymentClient (TAM-184)
