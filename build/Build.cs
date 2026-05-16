@@ -1,9 +1,16 @@
 using Tamp;
 using Tamp.NetCli.V10;
+using Tamp.Telegram;
 
 class Build : TampBuild
 {
     public static int Main(string[] args) => Execute<Build>(args);
+
+    // TAM-227 — Telegram failure notify. Pulls TELEGRAM_BOT_TOKEN /
+    // TELEGRAM_CHAT_ID / TELEGRAM_BUILD_LABEL from the environment;
+    // returns null when missing, framework silently skips null reporters.
+    [BuildReporter] readonly IBuildReporter? TelegramNotify =
+        TelegramBuildReporter.FromEnvironment();
 
     [Parameter("Build configuration")]
     Configuration Configuration = IsLocalBuild ? Configuration.Debug : Configuration.Release;
