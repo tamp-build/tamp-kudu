@@ -45,6 +45,7 @@ public sealed class CommandClient
     /// <param name="scriptBody">Script content. Should start with a shebang (<c>#!/usr/bin/env bash</c>).</param>
     /// <param name="workingDir">Working directory for the script's invocation. Default <c>/home/site/wwwroot</c>.</param>
     /// <param name="keepScript">When false (default), the script is deleted after execution. Set true to leave it on the host for diagnostics.</param>
+    /// <param name="ct">Token to cancel the request.</param>
     public async Task<CommandResult> ExecuteBashScriptAsync(
         string scriptName,
         string scriptBody,

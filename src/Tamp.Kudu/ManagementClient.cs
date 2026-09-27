@@ -187,7 +187,7 @@ public sealed record ConfigReferencesProperties
 /// Raw wire shape returned by <c>GET /config/configreferences/appsettings</c>:
 /// <c>{ value: [{ id, name, location, properties: {...}, type }, ...] }</c>. Exposed as
 /// public so adopters who want the full resource metadata (id, location, type) can call
-/// <see cref="ManagementClient.GetAsync{T}"/> directly with this type, bypassing the
+/// <c>ManagementClient.GetAsync{T}</c> directly with this type, bypassing the
 /// dict projection done by <see cref="ManagementClient.GetConfigReferencesAsync"/>.
 /// </summary>
 public sealed record ConfigReferencesRawResponse
