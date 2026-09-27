@@ -30,11 +30,11 @@ namespace Tamp.Kudu;
 ///   <item><b>Async + poll</b> — caller passes <c>async: true</c>. The wrapper posts to
 ///         <c>/api/zipdeploy?isAsync=true</c>, Kudu returns immediately with the deployment ID
 ///         in the <c>Location</c> header, the wrapper polls <c>/api/deployments/{id}</c> until
-///         the deployment reaches a terminal state or <paramref name="timeout"/> elapses.</item>
+///         the deployment reaches a terminal state or <c>timeout</c> elapses.</item>
 /// </list>
 /// </para>
 /// <para>
-/// <b>Zip creation is project-side.</b> Use <see cref="System.IO.Compression.ZipFile.CreateFromDirectory"/>
+/// <b>Zip creation is project-side.</b> Use <c>System.IO.Compression.ZipFile.CreateFromDirectory</c>
 /// or any other zip producer — Tamp does not opine on the layout.
 /// </para>
 /// </remarks>
